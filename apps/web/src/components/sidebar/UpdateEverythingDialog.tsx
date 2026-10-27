@@ -42,6 +42,7 @@ interface UpdateEverythingDialogProps {
   readonly restarts: ReadonlyArray<RestartingMachine>;
   readonly skipped: ReadonlyArray<SkippedMachine>;
   readonly onConfirm: () => void;
+  readonly onConfirmAppOnly?: () => void;
 }
 
 export function UpdateEverythingDialog({
@@ -65,6 +66,7 @@ function UpdateEverythingDialogContent({
   restarts,
   skipped,
   onConfirm,
+  onConfirmAppOnly,
 }: Omit<UpdateEverythingDialogProps, "open" | "onOpenChange">) {
   const stopped = useAtomValue(
     runningThreadCountAtom(
@@ -109,6 +111,11 @@ function UpdateEverythingDialogContent({
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+        {onConfirmAppOnly ? (
+          <Button variant="outline" onClick={onConfirmAppOnly}>
+            Only this app
+          </Button>
+        ) : null}
         <Button onClick={onConfirm}>Update</Button>
       </AlertDialogFooter>
     </>
