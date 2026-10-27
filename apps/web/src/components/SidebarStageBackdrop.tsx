@@ -16,7 +16,7 @@ export function resolveSidebarStageBackdropVariant(
 ): SidebarStageBackdropVariant | null {
   if (!enabled) return null;
   const normalized = stageLabel.trim().toLowerCase();
-  if (normalized === "nightly") return "nightly";
+  // Fork: every Flock build is a nightly, so nightly is not marked.
   if (normalized === "dev") return "dev";
   return null;
 }
@@ -26,7 +26,6 @@ export function resolveEnvironmentIdentificationPillLabel(
 ): EnvironmentIdentificationPillLabel | null {
   const normalized = stageLabel.trim().toLowerCase();
   if (normalized === "dev") return "Dev";
-  if (normalized === "nightly") return "Nightly";
   return null;
 }
 
