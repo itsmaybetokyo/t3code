@@ -1,10 +1,11 @@
 name: Fork release
 
 # Builds rohit/changes for this fork and publishes it as a nightly prerelease
-# here: the signed macOS arm64 app (with its updater feed) and the Linux x64 and
-# arm64 CLI archives. Upstream's release.yml only runs in pingdotgg/t3code and
-# needs its runners, relay state and publishing credentials; this file reuses
-# its per-platform build, release-desktop.yml, without editing it.
+# here: the Windows x64 and arm64 desktop installers (exe + blockmap) and the
+# corresponding CLI archives. Upstream's release.yml only runs in
+# pingdotgg/t3code and needs its runners, relay state and publishing
+# credentials; this file reuses its per-platform build, release-desktop.yml,
+# without editing it.
 
 on:
   push:
@@ -116,7 +117,8 @@ jobs:
       - name: Align package versions to release version
         run: node scripts/update-release-package-versions.ts "${{ needs.meta.outputs.version }}"
 
-      # @t3tools/desktop#build compiles the Linux browser secret helper.
+      # @t3tools/desktop#build compiles the Linux browser secret helper,
+      # needed for the cross-platform Linux CLI archive that Windows embeds.
       - name: Install browser secret helper build libraries
         run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
 
@@ -136,8 +138,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  desktop_mac_arm64:
-    name: Desktop macOS arm64
+  desktop_windows_x64:
+    name: Desktop Windows x64
     needs: [meta, build_bundle]
     uses: ./.github/workflows/release-desktop.yml
     secrets: inherit
@@ -150,41 +152,18 @@ jobs:
       clerk_jwt_template: ${{ needs.meta.outputs.clerk_jwt_template }}
       clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.meta.outputs.relay_url }}
-      label: macOS arm64
-      runner: macos-15
-      platform: mac
-      target: dmg
-      arch: arm64
-      rust_target: aarch64-apple-darwin
-      resource_key: darwin-arm64
-      cli_archive: true
-
-  desktop_linux_x64:
-    name: Desktop Linux x64
-    needs: [meta, build_bundle]
-    uses: ./.github/workflows/release-desktop.yml
-    secrets: inherit
-    with:
-      version: ${{ needs.meta.outputs.version }}
-      ref: ${{ github.sha }}
-      release_channel: nightly
-      relay_client_tracing: false
-      clerk_publishable_key: ${{ needs.meta.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.meta.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
-      relay_url: ${{ needs.meta.outputs.relay_url }}
-      label: Linux x64
-      runner: ubuntu-24.04
-      platform: linux
-      target: AppImage
+      label: Windows x64
+      runner: windows-latest
+      platform: win
+      target: exe
       arch: x64
-      rust_target: x86_64-unknown-linux-gnu
-      resource_key: linux-x64
+      rust_target: x86_64-pc-windows-msvc
+      resource_key: win-x64
       cli_archive: true
+      launch_check: false
 
-  # node-pty compiles from source on Linux arm64, so it builds on arm64 hardware.
-  desktop_linux_arm64:
-    name: Desktop Linux arm64
+  desktop_windows_arm64:
+    name: Desktop Windows arm64
     needs: [meta, build_bundle]
     uses: ./.github/workflows/release-desktop.yml
     secrets: inherit
@@ -197,18 +176,19 @@ jobs:
       clerk_jwt_template: ${{ needs.meta.outputs.clerk_jwt_template }}
       clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.meta.outputs.relay_url }}
-      label: Linux arm64
-      runner: ubuntu-24.04-arm
-      platform: linux
-      target: AppImage
+      label: Windows arm64
+      runner: windows-11-arm
+      platform: win
+      target: exe
       arch: arm64
-      rust_target: aarch64-unknown-linux-gnu
-      resource_key: linux-arm64
+      rust_target: aarch64-pc-windows-msvc
+      resource_key: win-arm64
       cli_archive: true
+      launch_check: false
 
   release:
     name: Publish GitHub Release
-    needs: [meta, desktop_mac_arm64, desktop_linux_x64, desktop_linux_arm64]
+    needs: [meta, desktop_windows_x64, desktop_windows_arm64]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -233,8 +213,8 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
-          for required in t3-*-darwin-arm64.tar.gz t3-*-linux-x64.tar.gz t3-*-linux-arm64.tar.gz \
-            *.dmg *.zip nightly-mac.yml; do
+          for required in t3-*-win-x64.tar.gz t3-*-win-arm64.tar.gz \
+            *.exe nightly-win.yml; do
             compgen -G "$required" > /dev/null || { echo "Missing release asset: $required" >&2; exit 1; }
           done
           sha256sum t3-*.tar.gz > SHA256SUMS
@@ -250,10 +230,8 @@ jobs:
           prerelease: true
           make_latest: false
           files: |
-            release-assets/*.dmg
+            release-assets/*.exe
             release-assets/*.zip
-            release-assets/*.AppImage
-            release-assets/*.deb
             release-assets/*.blockmap
             release-assets/nightly*.yml
             release-assets/*.tar.gz
