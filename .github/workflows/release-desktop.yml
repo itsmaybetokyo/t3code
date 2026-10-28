@@ -382,6 +382,7 @@ jobs:
       # uploading the archive.
       - name: Wait for Linux CLI archive
         if: inputs.platform == 'win'
+        continue-on-error: true
         shell: pwsh
         timeout-minutes: 40
         env:
@@ -430,6 +431,7 @@ jobs:
 
       - name: Download Linux CLI archive for WSL
         if: inputs.platform == 'win'
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: cli-linux-${{ inputs.arch }}
