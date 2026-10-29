@@ -153,14 +153,16 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.meta.outputs.relay_url }}
       label: Windows x64
-      runner: windows-latest
+      runner: ubuntu-24.04
+      verify_runner: windows-2025
       platform: win
-      target: exe
+      target: nsis
       arch: x64
       rust_target: x86_64-pc-windows-msvc
-      resource_key: win-x64
+      resource_key: win32-x64
       cli_archive: true
       launch_check: false
+      wsl_runtime: false
 
   desktop_windows_arm64:
     name: Desktop Windows arm64
@@ -177,14 +179,16 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.meta.outputs.relay_url }}
       label: Windows arm64
-      runner: windows-11-arm
+      runner: ubuntu-24.04
+      verify_runner: windows-11-arm
       platform: win
-      target: exe
+      target: nsis
       arch: arm64
       rust_target: aarch64-pc-windows-msvc
-      resource_key: win-arm64
+      resource_key: win32-arm64
       cli_archive: true
       launch_check: false
+      wsl_runtime: false
 
   release:
     name: Publish GitHub Release
@@ -192,6 +196,23 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/scripts...
+
       - name: Download desktop artifacts
         uses: actions/download-artifact@v8
         with:
@@ -206,6 +227,26 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      # Each Windows build writes its own channel manifest, so fold the x64 and
+      # arm64 copies back into the single nightly.yml electron-updater reads.
+      - name: Merge Windows updater manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for x64_manifest in release-assets/*-win-x64.yml; do
+            arm64_manifest="${x64_manifest%-x64.yml}-arm64.yml"
+            merged_manifest="${x64_manifest%-win-x64.yml}.yml"
+            if [[ -f "$arm64_manifest" ]]; then
+              node scripts/merge-update-manifests.ts --platform win \
+                "$x64_manifest" "$arm64_manifest" "$merged_manifest"
+              rm -f "$x64_manifest" "$arm64_manifest"
+            else
+              mv "$x64_manifest" "$merged_manifest"
+            fi
+          done
+          ls -la release-assets
+
       # Installers verify archives against this file, so it is written from
       # the bytes that get uploaded.
       - name: Write CLI archive checksums
@@ -213,11 +254,14 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
-          for required in t3-*-win-x64.tar.gz t3-*-win-arm64.tar.gz \
-            *.exe nightly-win.yml; do
+          for required in t3-*-win32-x64.zip t3-*-win32-arm64.zip \
+            *.exe nightly.yml; do
             compgen -G "$required" > /dev/null || { echo "Missing release asset: $required" >&2; exit 1; }
           done
-          sha256sum t3-*.tar.gz > SHA256SUMS
+          shopt -s nullglob
+          archives=(t3-*.zip t3-*.tar.gz)
+          shopt -u nullglob
+          sha256sum "${archives[@]}" > SHA256SUMS
           cat SHA256SUMS
 
       - name: Publish release

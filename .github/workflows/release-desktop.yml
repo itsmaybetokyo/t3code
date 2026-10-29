@@ -92,6 +92,13 @@ on:
         required: false
         default: true
         type: boolean
+      # Whether a same-arch Linux CLI archive is built in the same run and must
+      # be embedded as the Windows WSL runtime. Forks that skip Linux builds set
+      # this to false.
+      wsl_runtime:
+        required: false
+        default: true
+        type: boolean
       clerk_publishable_key:
         required: true
         type: string
@@ -381,7 +388,7 @@ jobs:
       # after all other setup. It stops early if the Linux job ended without
       # uploading the archive.
       - name: Wait for Linux CLI archive
-        if: inputs.platform == 'win'
+        if: inputs.platform == 'win' && inputs.wsl_runtime
         continue-on-error: true
         shell: pwsh
         timeout-minutes: 40
@@ -430,7 +437,7 @@ jobs:
           }
 
       - name: Download Linux CLI archive for WSL
-        if: inputs.platform == 'win'
+        if: inputs.platform == 'win' && inputs.wsl_runtime
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -505,7 +512,16 @@ jobs:
           elif [[ "${{ inputs.platform }}" == "win" ]]; then
             # Embed the Linux CLI archive built by the same-arch Linux job as
             # the WSL runtime. Required for a working WSL backend on Windows.
-            args+=(--wsl-runtime "$GITHUB_WORKSPACE"/wsl-runtime/t3-*-linux-${{ inputs.arch }}.tar.gz)
+            # This fork may not build Linux (no archive), so only add the flag
+            # when the file is actually there.
+            shopt -s nullglob
+            wsl_archives=("$GITHUB_WORKSPACE"/wsl-runtime/t3-*-linux-${{ inputs.arch }}.tar.gz)
+            shopt -u nullglob
+            if [[ ${#wsl_archives[@]} -gt 0 ]]; then
+              args+=(--wsl-runtime "${wsl_archives[0]}")
+            else
+              echo "WSL runtime archive not present; packaging without it."
+            fi
             if has_all \
               "$AZURE_TENANT_ID" \
               "$AZURE_CLIENT_ID" \
